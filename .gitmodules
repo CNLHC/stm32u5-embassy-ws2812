@@ -1,0 +1,3 @@
+[submodule "embassy"]
+path = dep/embassy
+url = git@github.com:CNLHC/embassy.git
