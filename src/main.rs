@@ -11,7 +11,7 @@ use embassy_stm32::rcc::mux::ClockMux;
 use embassy_stm32::rcc::{self, Pll, Sysclk};
 use embassy_stm32::time::khz;
 use embassy_stm32::timer::{simple_pwm, Channel1Pin, GeneralInstance4Channel};
-use embassy_stm32::{Config, Peripheral};
+use embassy_stm32::{Config, Peripheral, Peripherals};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex;
 use embassy_time::{Duration, Ticker, Timer};
@@ -66,7 +66,7 @@ static DISPLAY_BUF: mutex::Mutex<ThreadModeRawMutex, RefCell<[u16; 1537]>> =
     mutex::Mutex::new(RefCell::new([0; 1537]));
 
 #[embassy_executor::task]
-async fn refresh_buf() {
+async fn update_vram_thread() {
     let mut i = 0;
     loop {
         Timer::after(Duration::from_millis(1500)).await;
@@ -76,19 +76,28 @@ async fn refresh_buf() {
     }
 }
 
-#[embassy_executor::main]
-async fn main(s: Spawner) -> ! {
-    let mut c: Config = Default::default();
-    c.rcc = rcc_config();
-    let mut p = embassy_stm32::init(c);
-    let mut pd = setup_pwm(p.TIM2, p.PA5);
-    s.spawn(refresh_buf()).unwrap();
+#[embassy_executor::task]
+async fn render_thread(p: Peripherals) {
     let mut buf1: [u16; 1537] = [0; 1537];
-    let mut ticker = Ticker::every(Duration::from_millis(1500));
+    let mut ticker = Ticker::every(Duration::from_millis(200));
+    let mut p = p;
+    let mut pd = setup_pwm(p.TIM2, p.PA5);
     loop {
         pd.waveform_ch1(&mut p.GPDMA1_CH2, &buf1).await;
         Timer::after_micros(50).await;
         buf1.copy_from_slice(DISPLAY_BUF.lock().await.borrow().as_slice());
         ticker.next().await;
+    }
+}
+
+#[embassy_executor::main]
+async fn main(s: Spawner) -> ! {
+    let mut c: Config = Default::default();
+    c.rcc = rcc_config();
+    let p = embassy_stm32::init(c);
+    s.spawn(update_vram_thread()).unwrap();
+    s.spawn(render_thread(p)).unwrap();
+    loop {
+        Timer::after(Duration::from_millis(10000)).await;
     }
 }
