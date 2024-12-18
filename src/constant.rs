@@ -1,0 +1,2 @@
+pub const WS2812_LOW_DUTY: u16 = 64;
+pub const WS2812_HIGH_DUTY: u16 = 2 * WS2812_LOW_DUTY;
